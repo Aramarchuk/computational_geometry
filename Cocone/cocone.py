@@ -54,10 +54,41 @@ class Triangle:
 # A tuple containing the center and radius of the circumscribed sphere.
 # If no valid sphere, returns ([0,0,0], -1)
 def circumscribed_sphere(X: np.ndarray, Y: np.ndarray, Z: np.ndarray, W: np.ndarray):
-############################################
-##### TODO #1: Implement this function #####
-############################################
-    return [0, 0, 0], -1
+    A = 2 * np.column_stack((X[1:] - X[0], Y[1:] - Y[0], Z[1:] - Z[0]))
+    b = W[1:] - W[0]
+
+    try:
+        C = np.linalg.solve(A, b)
+        r = np.linalg.norm(C - np.array([X[0], Y[0], Z[0]]))
+        return C, r
+    except np.linalg.LinAlgError:
+        return np.zeros(3), -1
+
+def estimate_normals(X: np.ndarray, Y: np.ndarray, Z: np.ndarray, poles: dict):
+    """Estimates normals for each vertex as the direction to its pole."""
+    num_points = len(X)
+    Nx, Ny, Nz = np.zeros(num_points), np.zeros(num_points), np.zeros(num_points)
+
+    if not poles:
+        return Nx, Ny, Nz
+
+    indices = np.array(list(poles.keys()))
+    pole_centers = np.array([poles[i].c for i in indices])
+
+    vertices = np.column_stack((X[indices], Y[indices], Z[indices]))
+
+    vectors = pole_centers - vertices
+
+    # Normalize vectors
+    norms = np.linalg.norm(vectors, axis=1)
+    valid_mask = norms > 1e-10
+    vectors[valid_mask] /= norms[valid_mask, np.newaxis]
+
+    Nx[indices] = vectors[:, 0]
+    Ny[indices] = vectors[:, 1]
+    Nz[indices] = vectors[:, 2]
+
+    return Nx, Ny, Nz
 
 # Compute poles for each vertex
 poles = {}
@@ -86,10 +117,7 @@ for s in simplices:
             triangles[t_idx] = Triangle(C, s[d])
 
 # Compute estimation for normals
-##############################################################
-##### TODO #2: Estimate normals as direction to the pole #####
-Nx, Ny, Nz = np.array([]), np.array(), np.array()
-##############################################################
+Nx, Ny, Nz = estimate_normals(X, Y, Z, poles)
 
 # Checks if a given triangle is "good" with respect to a specific vertex and its normal
 # Implements cocone intersection test
@@ -152,11 +180,16 @@ def intersection_check(triangle: Triangle, vertex_idx: int, triangle_vertices_in
 
     return True
 
+def compute_candidate_triangles(triangles: dict) -> dict:
+    """Selects triangles that satisfy the cocone condition for all vertices."""
+    candidates = {}
+    for t_idx, trg in triangles.items():
+        if all(intersection_check(trg, v, t_idx) for v in t_idx):
+            candidates[t_idx] = trg
+    return candidates
+
 # Compute the triangles that passes the test for all vertices
-#################################################
-##### TODO #3: Compute candidate triangles ######
-candidate_triangles = {}
-#################################################
+candidate_triangles = compute_candidate_triangles(triangles)
 
 # Output the data in OFF format to
 with open("test.off", "w") as out:
